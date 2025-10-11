@@ -131,11 +131,13 @@ Programming и пройти первые 5 подкурсов:
       |====                                                                                 |   5%
     | In its simplest form, R can be used as an interactive calculator. Type 5 + 7 and press
     | Enter.
-    '''
-    '''{r}
-    5+7
-    '''
-    '''
+
+``` r
+5+7
+```
+
+    [1] 12
+
     [1] 12
 
     | You're the best!
