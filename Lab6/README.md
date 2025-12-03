@@ -1,0 +1,260 @@
+# Исследование вредоносной активности в домене Windows
+
+
+## Цель работы
+
+1.  Закрепить навыки исследования данных журнала Windows Active
+    Directory
+2.  Изучить структуру журнала системы Windows Active Directory
+3.  Закрепить практические навыки использования языка программирования R
+    для обработки данных
+4.  Закрепить знания основных функций обработки данных экосистемы
+    tidyverse языка R
+
+## Исходные данные
+
+1.  Программное обеспечение Windows 10 Pro
+2.  R Studio
+3.  Интерпретатор языка R 4.5.1
+
+## План
+
+1.  Распаковать архив и загрузить исходный JSON-файл с логами.
+2.  Проверить структуру данных и определить вложенные поля.
+3.  Раскрыть вложенные датафреймы с помощью unnest_wider, сохранив имена
+    колонок.
+4.  Удалить неинформативные колонки, содержащие только одно уникальное
+    значение.
+5.  Подсчитать количество уникальных хостов в датасете.
+6.  Загрузить таблицу Windows Event_ID и привести типы данных к
+    корректным.
+7.  Объединить данные или использовать справочник для интерпретации
+    событий.
+8.  Определить число событий с высоким и средним уровнем значимости.
+
+## Шаги:
+
+1.  Импорт библиотек
+
+``` r
+  library(rvest)
+  library(tidyverse)
+```
+
+    Warning: пакет 'dplyr' был собран под R версии 4.5.2
+
+    ── Attaching core tidyverse packages ──────────────────────── tidyverse 2.0.0 ──
+    ✔ dplyr     1.1.4     ✔ readr     2.1.5
+    ✔ forcats   1.0.1     ✔ stringr   1.5.2
+    ✔ ggplot2   4.0.0     ✔ tibble    3.3.0
+    ✔ lubridate 1.9.4     ✔ tidyr     1.3.1
+    ✔ purrr     1.1.0     
+    ── Conflicts ────────────────────────────────────────── tidyverse_conflicts() ──
+    ✖ dplyr::filter()         masks stats::filter()
+    ✖ readr::guess_encoding() masks rvest::guess_encoding()
+    ✖ dplyr::lag()            masks stats::lag()
+    ℹ Use the conflicted package (<http://conflicted.r-lib.org/>) to force all conflicts to become errors
+
+``` r
+  library(lubridate)
+  options(stringsAsFactors = FALSE)
+```
+
+1.  Импорт данных
+
+<!-- -->
+
+     file_path <- "dataset.tar.gz"
+    > 
+    > untar(file_path, exdir = "data")
+    > json_file <- list.files("data", pattern = ".json", full.names = TRUE)
+    > 
+    > siem_data <- jsonlite::stream_in(file(json_file))
+    opening file input connection.
+     Imported 101904 records. Simplifying...
+    closing file input connection.
+    > 
+
+1.  Подготовка справочника событий Windows
+
+<!-- -->
+
+     webpage_url <- "https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/plan/appendix-l--events-to-monitor"
+    > webpage <- xml2::read_html(webpage_url)
+    > event_df <- rvest::html_table(webpage)[[1]]
+    > 
+    > glimpse(event_df)
+    Rows: 381
+    Columns: 4
+    $ `Current Windows Event ID` <chr> "4618", "4649", "4719", "4765", "4766", "4794", "4897", "4…
+    $ `Legacy Windows Event ID`  <chr> "N/A", "N/A", "612", "N/A", "N/A", "N/A", "801", "N/A", "N…
+    $ `Potential Criticality`    <chr> "High", "High", "High", "High", "High", "High", "High", "H…
+    $ `Event Summary`            <chr> "A monitored security event pattern has occurred.", "A rep…
+    > 
+
+1.  Предварительный просмотр данных
+
+<!-- -->
+
+    glimpse(siem_data)
+    Rows: 101,904
+    Columns: 9
+    $ `@timestamp` <chr> "2019-10-20T20:11:06.937Z", "2019-10-20T20:11:07.101Z", "2019-10-20T20:1…
+    $ `@metadata`  <df[,4]> <data.frame[31 x 4]>
+    $ event        <df[,4]> <data.frame[31 x 4]>
+    $ log          <df[,1]> <data.frame[31 x 1]>
+    $ message      <chr> "A token right was adjusted.\n\nSubject:\n\tSecurity ID:\t\tS-1-5-18\…
+    $ winlog       <df[,16]> <data.frame[31 x 16]>
+    $ ecs          <df[,1]> <data.frame[31 x 1]>
+    $ host         <df[,1]> <data.frame[31 x 1]>
+    $ agent        <df[,5]> <data.frame[31 x 5]>
+
+1.  Раскрытие вложенных списков
+
+<!-- -->
+
+    siem_data_clean <- siem_data %>%
+    +     unnest_wider(winlog, names_sep = "_") %>%
+    +     unnest_wider(event, names_sep = "_") %>%
+    +     unnest_wider(agent, names_sep = "_") %>%
+    +     unnest_wider(host, names_sep = "_") %>%
+    +     unnest_wider(log, names_sep = "_")
+    > 
+    > glimpse(siem_data_clean)
+    Rows: 101,904
+    Columns: 31
+    $ `@timestamp`         <chr> "2019-10-20T20:11:06.937Z", "2019-10-20T20:11:07.101Z", "2019-10…
+    $ `@metadata`          <df[,4]> <data.frame[31 x 4]>
+    $ event_created        <chr> "2019-10-20T20:11:09.988Z", "2019-10-20T20:11:09.988Z", "2019…
+    $ event_kind           <chr> "event", "event", "event", "event", "event", "event", "event", "…
+    $ event_code           <int> 4703, 4673, 10, 10, 10, 10, 11, 10, 10, 10, 10, 7, 7, 7, 4689, 1…
+    $ event_action         <chr> "Token Right Adjusted Events", "Sensitive Privilege Use", "Proce…
+    $ log_level            <chr> "information", "information", "information", "information", "inf…
+    $ message              <chr> "A token right was adjusted.\n\nSubject:\n\tSecurity ID:\t\tS-1-…
+    $ winlog_event_data    <df[,234]> <data.frame[31 x 234]>
+    $ winlog_event_id      <int> 4703, 4673, 10, 10, 10, 10, 11, 10, 10, 10, 10, 7, 7, 7, 4689, 1…
+    $ winlog_provider_name <chr> "Microsoft-Windows-Security-Auditing", "Microsoft-Windows-S…
+    $ winlog_api           <chr> "wineventlog", "wineventlog", "wineventlog", "wineventlog", "win…
+    $ winlog_record_id     <int> 50588, 104875, 226649, 153525, 163488, 153526, 134651, 226650, 2…
+    $ winlog_computer_name <chr> "HR001.shire.com", "HFDC01.shire.com", "IT001.shire.com", "HR001…
+    $ winlog_process       <df[,2]> <data.frame[31 x 2]>
+    $ winlog_keywords      <list<list>> ["Audit Success"], ["Audit Failure"], [<NULL>], [<NULL>], [<NULL…
+    $ winlog_provider_guid <chr> "{54849625-5478-4994-a5ba-3e3b0328c30d}", "{54849625-5478-4994-a…
+    $ winlog_channel       <chr> "security", "Security", "Microsoft-Windows-Sysmon/Operational…
+    $ winlog_task          <chr> "Token Right Adjusted Events", "Sensitive Privilege Use",…
+    $ winlog_opcode        <chr> "Info", "Info", "Info", "Info", "Info", "Info", "Info", "Info", …
+    $ winlog_version       <int> NA, NA, 3, 3, 3, 3, 2, 3, 3, 3, 3, 3, 3, 3, NA, 3, 3, NA, 3, 3, …
+    $ winlog_user          <df[,4]> <data.frame[31 x 4]>
+    $ winlog_activity_id   <chr> NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, …
+    $ winlog_user_data     <df[,30]> <data.frame[31 x 30]>
+    $ ecs                  <df[,1]> <data.frame[31 x 1]>
+    $ host_name            <chr> "WECServer", "WECServer", "WECServer", "WECServer", "WECServer",…
+    $ agent_ephemeral_id   <chr> "b372be1f-ba0a-4d7e-b4df-79eac86e1fde", "b372be1f-ba0a-4d7e-b4df…
+    $ agent_hostname       <chr> "WECServer", "WECServer", "WECServer", "WECServer", "WECServe…
+    $ agent_id             <chr> "d347d9a4-bff4-476c-b5a4-d51119f78250", "d347d9a4-bff4-476c-b5a4…
+    $ agent_version        <chr> "7.4.0", "7.4.0", "7.4.0", "7.4.0", "7.4.0", "7.4.0", "7.4.0…
+    $ agent_type           <chr> "winlogbeat", "winlogbeat", "winlogbeat", "winlogbeat", "winl…
+    > 
+
+1.  Минимизация колонок
+
+<!-- -->
+
+    siem_data_clean <- siem_data_clean %>% select(where(~n_distinct(.) > 1))
+    > glimpse(siem_data_clean)
+    Rows: 101,904
+    Columns: 21
+    $ `@timestamp`         <chr> "2019-10-20T20:11:06.937Z", "2019-10-20T20:11:07.101Z", "2019-10…
+    $ event_created        <chr> "2019-10-20T20:11:09.988Z", "2019-10-20T20:11:09.988Z", "2019-10…
+    $ event_code           <int> 4703, 4673, 10, 10, 10, 10, 11, 10, 10, 10, 10, 7, 7, 7, 4689, 1…
+    $ event_action         <chr> "Token Right Adjusted Events", "Sensitive Privilege Use", "Proce…
+    $ log_level            <chr> "information", "information", "information", "information", "inf…
+    $ message              <chr> "A token right was adjusted.\n\nSubject:\n\tSecurity ID:\t\tS-1-…
+    $ winlog_event_data    <df[,234]> <data.frame[31 x 234]>
+    $ winlog_event_id      <int> 4703, 4673, 10, 10, 10, 10, 11, 10, 10, 10, 10, 7, 7, 7, 46…
+    $ winlog_provider_name <chr> "Microsoft-Windows-Security-Auditing", "Microsoft-Windows-Securi…
+    $ winlog_record_id     <int> 50588, 104875, 226649, 153525, 163488, 153526, 134651, 226650, 2…
+    $ winlog_computer_name <chr> "HR001.shire.com", "HFDC01.shire.com", "IT001.shire.com", "HR001…
+    $ winlog_process       <df[,2]> <data.frame[31 x 2]>
+    $ winlog_keywords      <list<list>> ["Audit Success"], ["Audit Failure"], [<NULL>], [<NULL>], [<NULL…
+    $ winlog_provider_guid <chr> "{54849625-5478-4994-a5ba-3e3b0328c30d}", "{54849625-5478-499…
+    $ winlog_channel       <chr> "security", "Security", "Microsoft-Windows-Sysmon/Operati…
+    $ winlog_task          <chr> "Token Right Adjusted Events", "Sensitive Privilege Use", "Proce…
+    $ winlog_opcode        <chr> "Info", "Info", "Info", "Info", "Info", "Info", "Info", "Info", …
+    $ winlog_version       <int> NA, NA, 3, 3, 3, 3, 2, 3, 3, 3, 3, 3, 3, 3, NA, 3, 3, NA, 3, 3, …
+    $ winlog_user          <df[,4]> <data.frame[31 x 4]>
+    $ winlog_activity_id   <chr> NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, …
+    $ winlog_user_data     <df[,30]> <data.frame[31 x 30]>
+
+1.  Приведение типов столбцов
+
+<!-- -->
+
+    siem_data_clean <- siem_data_clean %>%
+        mutate(
+          `@timestamp` = ymd_hms(`@timestamp`),
+          event_code = as.integer(event_code),
+          winlog_event_id = as.integer(winlog_event_id),
+        )
+
+1.  Количество хостов
+
+<!-- -->
+
+    host_count <- siem_data_clean %>% summarize(hosts = n_distinct(winlog_computer_name))
+    > host_count
+    # A tibble: 1 × 1
+      hosts
+      <int>
+    1     5
+
+1.  Подготовка датафрейма с расшифровкой Windows Event_ID
+
+<!-- -->
+
+    windows_event_df <- event_df %>%
+    +     rename(winlog_event_id = `Current Windows Event ID`, description = `Event Summary`) %>%
+    +     mutate(winlog_event_id = as.integer(winlog_event_id),
+    +            description = as.character(description))
+    Предупреждение:
+    There was 1 warning in `mutate()`.
+    ℹ In argument: `winlog_event_id = as.integer(winlog_event_id)`.
+    Caused by warning:
+    ! в результате преобразования созданы NA 
+    > glimpse(windows_event_df)
+    Rows: 381
+    Columns: 4
+    $ winlog_event_id           <int> 4618, 4649, 4719, 4765, 4766, 4794, 4897, 4964, 5124, NA, 1…
+    $ `Legacy Windows Event ID` <chr> "N/A", "N/A", "612", "N/A", "N/A", "N/A", "801", "N/A", "N/…
+    $ `Potential Criticality`   <chr> "High", "High", "High", "High", "High", "High", "High", "Hi…
+    $ description               <chr> "A monitored security event pattern has occurred.", "A repl…
+
+1.  События с высоким и средним уровнем важности
+
+<!-- -->
+
+    error_events <- siem_data_clean %>%
+    +     filter(log_level %in% c("error"))
+    > warn_events <- siem_data_clean %>%
+    +     filter(log_level %in% c("warning"))
+    > 
+    > 
+    > error_count <- nrow(error_events)
+    > warn_count <- nrow(warn_events)
+    > sprintf("1. Количество событий высокого уровня значимости: %d", error_count)
+    [1] "1. Количество событий высокого уровня значимости: 4"
+    > sprintf("2. Количество событий среднего уровня значимости: %d", warn_count)
+    [1] "2. Количество событий среднего уровня значимости: 222"
+    > sprintf("1+2: %d", error_count+warn_count)   
+    [1] "1+2: 226"
+
+## Оценка результата
+
+В результате лабораторной работы мы научились анализировать события ОС
+Windows
+
+## Вывод
+
+## Таким образом, мы научились работать с определенными функциями и библиотеками языка R для анализа дампов событий ОС Windows
+
+## 
